@@ -40,13 +40,14 @@ export class YouTubeService {
 
   async getSubscriptions(): Promise<YouTubeChannel[]> {
     try {
+      console.log('Fetching subscriptions from YouTube API...')
       const response = await this.youtube.subscriptions.list({
         part: ['snippet'],
         mine: true,
         maxResults: 50
       })
 
-      return response.data.items?.map(item => ({
+      const subscriptions = response.data.items?.map(item => ({
         id: item.snippet?.resourceId?.channelId || '',
         title: item.snippet?.title || '',
         thumbnails: {
@@ -55,6 +56,9 @@ export class YouTubeService {
           high: { url: item.snippet?.thumbnails?.high?.url || '' }
         }
       })) || []
+      
+      console.log(`Found ${subscriptions.length} subscriptions`)
+      return subscriptions
     } catch (error) {
       console.error('Error fetching subscriptions:', error)
       return []
@@ -104,14 +108,20 @@ export class YouTubeService {
 
   async getVideosFromSubscriptions(): Promise<YouTubeVideo[]> {
     try {
+      console.log('Starting getVideosFromSubscriptions...')
       const channels = await this.getSubscriptions()
+      console.log(`Processing ${Math.min(channels.length, 10)} channels...`)
+      
       const allVideos: YouTubeVideo[] = []
 
       for (const channel of channels.slice(0, 10)) {
+        console.log(`Fetching videos for channel: ${channel.title} (${channel.id})`)
         const videos = await this.getChannelVideos(channel.id, 5)
+        console.log(`Found ${videos.length} videos for ${channel.title}`)
         allVideos.push(...videos)
       }
 
+      console.log(`Total videos collected: ${allVideos.length}`)
       return allVideos.sort((a, b) => 
         new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
       )
