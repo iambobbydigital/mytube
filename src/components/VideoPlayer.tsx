@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Play, Pause, SkipForward } from 'lucide-react'
+import { Play, Pause, SkipForward, Maximize, Minimize, Settings } from 'lucide-react'
 import { YouTubeVideo } from '@/lib/youtube'
 
 interface VideoPlayerProps {
@@ -13,8 +13,15 @@ interface VideoPlayerProps {
 export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [showControls, setShowControls] = useState(true)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [playbackSpeed, setPlaybackSpeed] = useState(1)
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const speedMenuRef = useRef<HTMLDivElement>(null)
   const controlsTimeoutRef = useRef<NodeJS.Timeout>()
+  
+  const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
   useEffect(() => {
     const hideControls = () => {
@@ -35,6 +42,46 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
       }
     }
   }, [isPlaying])
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      )
+      setIsFullscreen(isCurrentlyFullscreen)
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange)
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (speedMenuRef.current && !speedMenuRef.current.contains(event.target as Node)) {
+        setShowSpeedMenu(false)
+      }
+    }
+
+    if (showSpeedMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSpeedMenu])
 
   const handleMouseMove = () => {
     setShowControls(true)
@@ -67,8 +114,50 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
     }
   }
 
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return
+
+    if (!isFullscreen) {
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen()
+      } else if ((containerRef.current as any).webkitRequestFullscreen) {
+        (containerRef.current as any).webkitRequestFullscreen()
+      } else if ((containerRef.current as any).mozRequestFullScreen) {
+        (containerRef.current as any).mozRequestFullScreen()
+      } else if ((containerRef.current as any).msRequestFullscreen) {
+        (containerRef.current as any).msRequestFullscreen()
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen()
+      } else if ((document as any).mozCancelFullScreen) {
+        (document as any).mozCancelFullScreen()
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen()
+      }
+    }
+  }
+
+  const changePlaybackSpeed = (speed: number) => {
+    setPlaybackSpeed(speed)
+    setShowSpeedMenu(false)
+    if (iframeRef.current) {
+      iframeRef.current.contentWindow?.postMessage(
+        `{"event":"command","func":"setPlaybackRate","args":"${speed}"}`,
+        '*'
+      )
+    }
+  }
+
   return (
-    <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden group">
+    <div 
+      ref={containerRef}
+      className={`relative w-full bg-black overflow-hidden group ${
+        isFullscreen ? 'fixed inset-0 z-50' : 'aspect-video rounded-lg'
+      }`}
+    >
       <iframe
         ref={iframeRef}
         className="w-full h-full"
@@ -118,6 +207,39 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
                   <SkipForward size={24} />
                 </button>
               )}
+
+              <div className="relative" ref={speedMenuRef}>
+                <button
+                  onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                  className="flex items-center justify-center w-12 h-12 bg-white/20 text-white rounded-full hover:bg-white/30 transition-colors"
+                >
+                  <Settings size={20} />
+                </button>
+                
+                {showSpeedMenu && (
+                  <div className="absolute bottom-14 right-0 bg-black/90 rounded-lg p-2 min-w-[120px] z-10">
+                    <div className="text-white text-sm font-medium mb-2 px-2">Speed</div>
+                    {speedOptions.map((speed) => (
+                      <button
+                        key={speed}
+                        onClick={() => changePlaybackSpeed(speed)}
+                        className={`block w-full text-left px-2 py-1 text-sm rounded hover:bg-white/20 transition-colors ${
+                          playbackSpeed === speed ? 'text-red-400' : 'text-white'
+                        }`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={toggleFullscreen}
+                className="flex items-center justify-center w-12 h-12 bg-white/20 text-white rounded-full hover:bg-white/30 transition-colors"
+              >
+                {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+              </button>
             </div>
           </div>
         </div>
