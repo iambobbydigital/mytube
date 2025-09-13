@@ -21,7 +21,7 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
   const speedMenuRef = useRef<HTMLDivElement>(null)
   const controlsTimeoutRef = useRef<NodeJS.Timeout>()
   
-  const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+  const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3.0]
 
   useEffect(() => {
     const hideControls = () => {
@@ -96,12 +96,25 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
   }
 
   const togglePlayPause = () => {
-    if (iframeRef.current) {
-      const iframe = iframeRef.current
+    if (iframeRef.current && iframeRef.current.contentWindow) {
       if (isPlaying) {
-        iframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*')
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({
+            event: 'command',
+            func: 'pauseVideo',
+            args: []
+          }),
+          '*'
+        )
       } else {
-        iframe.contentWindow?.postMessage('{"event":"command","func":"playVideo","args":""}', '*')
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({
+            event: 'command',
+            func: 'playVideo',
+            args: []
+          }),
+          '*'
+        )
       }
       setIsPlaying(!isPlaying)
     }
@@ -143,9 +156,14 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
   const changePlaybackSpeed = (speed: number) => {
     setPlaybackSpeed(speed)
     setShowSpeedMenu(false)
-    if (iframeRef.current) {
-      iframeRef.current.contentWindow?.postMessage(
-        `{"event":"command","func":"setPlaybackRate","args":"${speed}"}`,
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      // YouTube iframe API requires this specific format
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({
+          event: 'command',
+          func: 'setPlaybackRate',
+          args: [speed]
+        }),
         '*'
       )
     }
@@ -161,7 +179,7 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
       <iframe
         ref={iframeRef}
         className="w-full h-full"
-        src={`https://www.youtube.com/embed/${video.id}?enablejsapi=1&controls=0&rel=0&modestbranding=1&autoplay=0`}
+        src={`https://www.youtube.com/embed/${video.id}?enablejsapi=1&controls=0&rel=0&modestbranding=1&autoplay=0&origin=${window.location.origin}`}
         title={video.title}
         frameBorder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -217,19 +235,21 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
                 </button>
                 
                 {showSpeedMenu && (
-                  <div className="absolute bottom-14 right-0 bg-black/90 rounded-lg p-2 min-w-[120px] z-10">
-                    <div className="text-white text-sm font-medium mb-2 px-2">Speed</div>
-                    {speedOptions.map((speed) => (
-                      <button
-                        key={speed}
-                        onClick={() => changePlaybackSpeed(speed)}
-                        className={`block w-full text-left px-2 py-1 text-sm rounded hover:bg-white/20 transition-colors ${
-                          playbackSpeed === speed ? 'text-red-400' : 'text-white'
-                        }`}
-                      >
-                        {speed}x
-                      </button>
-                    ))}
+                  <div className="absolute bottom-14 right-0 bg-black/95 rounded-lg p-3 min-w-[140px] z-10 border border-gray-600 shadow-xl max-h-80 overflow-y-auto">
+                    <div className="text-white text-sm font-medium mb-3 px-1 border-b border-gray-600 pb-2">Playback Speed</div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {speedOptions.map((speed) => (
+                        <button
+                          key={speed}
+                          onClick={() => changePlaybackSpeed(speed)}
+                          className={`px-3 py-2 text-sm rounded-md hover:bg-white/20 transition-colors text-center ${
+                            playbackSpeed === speed ? 'bg-red-600 text-white' : 'text-white hover:text-red-300'
+                          }`}
+                        >
+                          {speed}x
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
