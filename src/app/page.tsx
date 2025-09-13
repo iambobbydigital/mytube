@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import LoginButton from '@/components/LoginButton'
 import VideoGrid from '@/components/VideoGrid'
@@ -15,13 +15,7 @@ export default function Home() {
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
 
-  useEffect(() => {
-    if (session?.accessToken) {
-      loadVideos()
-    }
-  }, [session, loadVideos])
-
-  const loadVideos = async () => {
+  const loadVideos = useCallback(async () => {
     if (!session) return
     
     setLoading(true)
@@ -38,7 +32,13 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [session])
+
+  useEffect(() => {
+    if (session?.accessToken) {
+      loadVideos()
+    }
+  }, [session, loadVideos])
 
   const handleVideoClick = (video: YouTubeVideo) => {
     const index = videos.findIndex(v => v.id === video.id)
