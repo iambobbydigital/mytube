@@ -6,6 +6,7 @@ import LoginButton from '@/components/LoginButton'
 import VideoGrid from '@/components/VideoGrid'
 import VideoPlayer from '@/components/VideoPlayer'
 import { YouTubeVideo } from '@/lib/youtube'
+import { VideoStateManager } from '@/lib/videoState'
 import { Youtube } from 'lucide-react'
 
 export default function Home() {
@@ -47,10 +48,28 @@ export default function Home() {
   }
 
   const handleNext = () => {
+    // Find the next unwatched video
+    let nextIndex = currentIndex + 1
+    
+    while (nextIndex < videos.length) {
+      const video = videos[nextIndex]
+      const watchState = VideoStateManager.getVideoState(video.id)
+      
+      // If video is not completed, use it
+      if (!watchState || !watchState.isCompleted) {
+        setSelectedVideo(video)
+        setCurrentIndex(nextIndex)
+        return
+      }
+      
+      nextIndex++
+    }
+    
+    // If no unwatched videos found, go to regular next video
     if (currentIndex < videos.length - 1) {
-      const nextIndex = currentIndex + 1
-      setSelectedVideo(videos[nextIndex])
-      setCurrentIndex(nextIndex)
+      const regularNext = currentIndex + 1
+      setSelectedVideo(videos[regularNext])
+      setCurrentIndex(regularNext)
     }
   }
 
@@ -93,11 +112,23 @@ export default function Home() {
           <VideoPlayer
             video={selectedVideo}
             onNext={handleNext}
-            hasNext={currentIndex < videos.length - 1}
+            hasNext={(() => {
+              // Check if there are any videos after current index
+              return currentIndex < videos.length - 1
+            })()}
           />
           
           <div className="mt-6 text-center text-gray-400">
-            Video {currentIndex + 1} of {videos.length}
+            <div>Video {currentIndex + 1} of {videos.length}</div>
+            <div className="text-sm mt-1">
+              {(() => {
+                const unwatchedCount = videos.filter(video => {
+                  const watchState = VideoStateManager.getVideoState(video.id)
+                  return !watchState || !watchState.isCompleted
+                }).length
+                return `${unwatchedCount} unwatched videos remaining`
+              })()}
+            </div>
           </div>
         </div>
       </div>

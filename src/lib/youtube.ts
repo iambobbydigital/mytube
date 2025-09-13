@@ -15,6 +15,15 @@ export interface YouTubeVideo {
   duration: string
 }
 
+export interface VideoWatchState {
+  videoId: string
+  currentTime: number
+  duration: number
+  isCompleted: boolean
+  lastWatched: string
+  completionPercentage: number
+}
+
 export interface YouTubeChannel {
   id: string
   title: string
