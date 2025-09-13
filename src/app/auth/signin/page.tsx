@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Youtube, AlertCircle } from 'lucide-react'
 
 export default function SignIn() {
-  const [providers, setProviders] = useState<any>(null)
+  const [providers, setProviders] = useState<Record<string, any> | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
@@ -83,7 +83,7 @@ export default function SignIn() {
 
         <div className="space-y-4">
           {providers &&
-            Object.values(providers).map((provider: any) => (
+            Object.values(providers).map((provider: Record<string, any>) => (
               <div key={provider.name}>
                 <button
                   onClick={() => handleSignIn(provider.id)}

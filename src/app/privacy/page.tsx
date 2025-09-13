@@ -28,7 +28,7 @@ export default function PrivacyPolicy() {
           <section className="mb-8">
             <h2 className="text-2xl font-semibold text-white mb-4">Introduction</h2>
             <p className="text-gray-300 leading-relaxed">
-              MyTube ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy 
+              MyTube (&ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) is committed to protecting your privacy. This Privacy Policy 
               explains how we collect, use, disclose, and safeguard your information when you use our 
               application that allows you to view videos from your YouTube subscriptions with custom controls.
             </p>
