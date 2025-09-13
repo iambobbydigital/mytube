@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Play, Pause, SkipForward, Maximize, Minimize, Settings } from 'lucide-react'
+import { Play, Pause, SkipForward, SkipBack, RotateCcw, RotateCw, Maximize, Minimize, Settings } from 'lucide-react'
 import { YouTubeVideo } from '@/lib/youtube'
 
 interface VideoPlayerProps {
@@ -16,6 +16,8 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const speedMenuRef = useRef<HTMLDivElement>(null)
@@ -82,6 +84,27 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [showSpeedMenu])
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== 'https://www.youtube.com') return
+      
+      try {
+        const data = JSON.parse(event.data)
+        if (data.event === 'video-progress') {
+          setCurrentTime(data.info.currentTime)
+          setDuration(data.info.duration)
+        }
+      } catch (error) {
+        // Ignore parsing errors
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => {
+      window.removeEventListener('message', handleMessage)
+    }
+  }, [])
 
   const handleMouseMove = () => {
     setShowControls(true)
@@ -169,6 +192,38 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
     }
   }
 
+  const skipBackward = () => {
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      // Skip back 30 seconds
+      const newTime = Math.max(0, currentTime - 30)
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({
+          event: 'command',
+          func: 'seekTo',
+          args: [newTime, true]
+        }),
+        '*'
+      )
+      setCurrentTime(newTime)
+    }
+  }
+
+  const skipForward = () => {
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      // Skip forward 30 seconds
+      const newTime = duration > 0 ? Math.min(duration, currentTime + 30) : currentTime + 30
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({
+          event: 'command',
+          func: 'seekTo',
+          args: [newTime, true]
+        }),
+        '*'
+      )
+      setCurrentTime(newTime)
+    }
+  }
+
   return (
     <div 
       ref={containerRef}
@@ -211,10 +266,28 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
             
             <div className="flex items-center gap-3">
               <button
-                onClick={togglePlayPause}
-                className="flex items-center justify-center w-12 h-12 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors"
+                onClick={skipBackward}
+                className="flex flex-col items-center justify-center w-12 h-12 bg-white/20 text-white rounded-full hover:bg-white/30 transition-colors relative"
+                title="Skip back 30 seconds"
               >
-                {isPlaying ? <Pause size={24} /> : <Play size={24} />}
+                <RotateCcw size={16} />
+                <span className="text-xs font-bold leading-none">30</span>
+              </button>
+
+              <button
+                onClick={togglePlayPause}
+                className="flex items-center justify-center w-14 h-14 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors"
+              >
+                {isPlaying ? <Pause size={26} /> : <Play size={26} />}
+              </button>
+
+              <button
+                onClick={skipForward}
+                className="flex flex-col items-center justify-center w-12 h-12 bg-white/20 text-white rounded-full hover:bg-white/30 transition-colors relative"
+                title="Skip forward 30 seconds"
+              >
+                <RotateCw size={16} />
+                <span className="text-xs font-bold leading-none">30</span>
               </button>
               
               {hasNext && (
