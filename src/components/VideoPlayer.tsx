@@ -157,8 +157,10 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
     }
   }, [isPlaying])
 
-  // Load saved video state on component mount
+  // Load saved video state on component mount (client-side only)
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    
     const savedState = VideoStateManager.getVideoState(video.id)
     if (savedState && savedState.currentTime > 10 && !savedState.isCompleted) {
       // If user was more than 10 seconds in and hasn't completed, ask to resume
@@ -173,8 +175,9 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
     }
   }, [video.id])
 
-  // Save video progress periodically
+  // Save video progress periodically (client-side only)
   useEffect(() => {
+    if (typeof window === 'undefined') return
     if (duration > 0 && currentTime > 0) {
       const interval = setInterval(() => {
         VideoStateManager.updateVideoState({
@@ -191,8 +194,9 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
     }
   }, [video.id, currentTime, duration])
 
-  // Mark video as completed when reaching 90%
+  // Mark video as completed when reaching 90% (client-side only)
   useEffect(() => {
+    if (typeof window === 'undefined') return
     if (duration > 0 && currentTime > 0) {
       const completionRatio = currentTime / duration
       if (completionRatio >= 0.9 && !hasStartedPlayback) {

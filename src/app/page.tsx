@@ -48,24 +48,27 @@ export default function Home() {
   }
 
   const handleNext = () => {
-    // Find the next unwatched video
-    let nextIndex = currentIndex + 1
-    
-    while (nextIndex < videos.length) {
-      const video = videos[nextIndex]
-      const watchState = VideoStateManager.getVideoState(video.id)
+    // Only use smart navigation on client side
+    if (typeof window !== 'undefined') {
+      // Find the next unwatched video
+      let nextIndex = currentIndex + 1
       
-      // If video is not completed, use it
-      if (!watchState || !watchState.isCompleted) {
-        setSelectedVideo(video)
-        setCurrentIndex(nextIndex)
-        return
+      while (nextIndex < videos.length) {
+        const video = videos[nextIndex]
+        const watchState = VideoStateManager.getVideoState(video.id)
+        
+        // If video is not completed, use it
+        if (!watchState || !watchState.isCompleted) {
+          setSelectedVideo(video)
+          setCurrentIndex(nextIndex)
+          return
+        }
+        
+        nextIndex++
       }
-      
-      nextIndex++
     }
     
-    // If no unwatched videos found, go to regular next video
+    // Fallback: go to regular next video
     if (currentIndex < videos.length - 1) {
       const regularNext = currentIndex + 1
       setSelectedVideo(videos[regularNext])
@@ -122,6 +125,7 @@ export default function Home() {
             <div>Video {currentIndex + 1} of {videos.length}</div>
             <div className="text-sm mt-1">
               {(() => {
+                if (typeof window === 'undefined') return ''
                 const unwatchedCount = videos.filter(video => {
                   const watchState = VideoStateManager.getVideoState(video.id)
                   return !watchState || !watchState.isCompleted

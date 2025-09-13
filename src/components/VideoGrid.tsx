@@ -36,7 +36,8 @@ export default function VideoGrid({ videos, onVideoClick }: VideoGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {videos.map((video) => {
-        const watchState = VideoStateManager.getVideoState(video.id)
+        // Only access localStorage on client side
+        const watchState = typeof window !== 'undefined' ? VideoStateManager.getVideoState(video.id) : null
         const isCompleted = watchState?.isCompleted || false
         const hasProgress = watchState && watchState.currentTime > 10 && !isCompleted
         const progressPercentage = watchState ? watchState.completionPercentage : 0
