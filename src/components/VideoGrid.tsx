@@ -11,7 +11,10 @@ interface VideoGridProps {
 }
 
 export default function VideoGrid({ videos, onVideoClick }: VideoGridProps) {
+  console.log('[VideoGrid] Component rendered with videos:', videos.length)
+  
   if (videos.length === 0) {
+    console.log('[VideoGrid] No videos to display - showing empty state')
     return (
       <div className="text-center py-12">
         <p className="text-gray-400 text-lg">No videos found from your subscriptions</p>
@@ -37,10 +40,24 @@ export default function VideoGrid({ videos, onVideoClick }: VideoGridProps) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {videos.map((video) => {
         // Only access localStorage on client side
-        const watchState = typeof window !== 'undefined' ? VideoStateManager.getVideoState(video.id) : null
+        console.log('[VideoGrid] Rendering video:', video.id, video.title.substring(0, 30))
+        let watchState = null
+        try {
+          if (typeof window !== 'undefined') {
+            console.log('[VideoGrid] Getting watch state for:', video.id)
+            watchState = VideoStateManager.getVideoState(video.id)
+          } else {
+            console.log('[VideoGrid] Server-side rendering, skipping localStorage')
+          }
+        } catch (error) {
+          console.error('[VideoGrid] Error getting watch state for', video.id, ':', error)
+        }
+        
         const isCompleted = watchState?.isCompleted || false
         const hasProgress = watchState && watchState.currentTime > 10 && !isCompleted
         const progressPercentage = watchState ? watchState.completionPercentage : 0
+        
+        console.log('[VideoGrid] Video', video.id, 'state:', { isCompleted, hasProgress, progressPercentage })
         
         return (
           <div

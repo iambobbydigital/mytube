@@ -17,27 +17,44 @@ export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(0)
 
   const loadVideos = useCallback(async () => {
-    if (!session) return
+    console.log('[DEBUG] loadVideos called, session:', !!session)
+    if (!session) {
+      console.log('[DEBUG] No session, skipping video load')
+      return
+    }
     
+    console.log('[DEBUG] Starting video fetch, setting loading=true')
     setLoading(true)
     try {
+      console.log('[DEBUG] Fetching /api/youtube/subscriptions')
       const response = await fetch('/api/youtube/subscriptions')
+      console.log('[DEBUG] Fetch response status:', response.status, 'ok:', response.ok)
+      
       if (response.ok) {
         const data = await response.json()
-        setVideos(data.videos)
+        console.log('[DEBUG] API response data:', data)
+        console.log('[DEBUG] Videos received:', data.videos?.length || 0)
+        setVideos(data.videos || [])
       } else {
-        console.error('Failed to fetch videos:', response.statusText)
+        console.error('[ERROR] Failed to fetch videos:', response.status, response.statusText)
+        const errorText = await response.text()
+        console.error('[ERROR] Response body:', errorText)
       }
     } catch (error) {
-      console.error('Error loading videos:', error)
+      console.error('[ERROR] Exception loading videos:', error)
     } finally {
+      console.log('[DEBUG] Setting loading=false')
       setLoading(false)
     }
   }, [session])
 
   useEffect(() => {
+    console.log('[DEBUG] useEffect triggered - session:', !!session, 'accessToken:', !!session?.accessToken)
     if (session?.accessToken) {
+      console.log('[DEBUG] Session and accessToken valid, calling loadVideos()')
       loadVideos()
+    } else {
+      console.log('[DEBUG] No session or no accessToken, not loading videos')
     }
   }, [session, loadVideos])
 
