@@ -37,8 +37,5 @@
       "destination": "/auth/signin", 
       "permanent": false
     }
-  ],
-  "env": {
-    "NEXTAUTH_URL": "@vercel-url"
-  }
+  ]
 }
