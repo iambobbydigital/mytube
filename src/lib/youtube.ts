@@ -102,23 +102,27 @@ export class YouTubeService {
     try {
       console.log(`[YouTube API] Fetching videos for channel: ${channelId} (max: ${maxResults})`)
       
-      const searchResponse = await this.youtube.search.list({
+      // Convert channel ID from UC... to UU... to get uploads playlist ID
+      // This is YouTube's standard: every channel has an uploads playlist
+      const uploadsPlaylistId = channelId.startsWith('UC') ? 'UU' + channelId.slice(2) : channelId
+      console.log(`[YouTube API] Using uploads playlist: ${uploadsPlaylistId} (converted from ${channelId})`)
+      
+      // Use playlistItems.list instead of search.list (1 unit vs 100 units!)
+      const playlistResponse = await this.youtube.playlistItems.list({
         part: ['snippet'],
-        channelId: channelId,
-        order: 'date',
-        type: ['video'],
+        playlistId: uploadsPlaylistId,
         maxResults: maxResults
       })
 
-      console.log(`[YouTube API] Search response status:`, searchResponse.status)
-      console.log(`[YouTube API] Search response items:`, searchResponse.data.items?.length || 0)
+      console.log(`[YouTube API] PlaylistItems response status:`, playlistResponse.status)
+      console.log(`[YouTube API] PlaylistItems response items:`, playlistResponse.data.items?.length || 0)
       
-      if (!searchResponse.data.items) {
-        console.log(`[YouTube API] No items in search response for channel ${channelId}`)
+      if (!playlistResponse.data.items) {
+        console.log(`[YouTube API] No items in playlist response for playlist ${uploadsPlaylistId}`)
         return []
       }
 
-      const videoIds = searchResponse.data.items.map(item => item.id?.videoId).filter(Boolean)
+      const videoIds = playlistResponse.data.items.map(item => item.snippet?.resourceId?.videoId).filter(Boolean)
       console.log(`[YouTube API] Video IDs found:`, videoIds.length, videoIds.slice(0, 3))
       
       if (videoIds.length === 0) {
@@ -165,6 +169,7 @@ export class YouTubeService {
   async getVideosFromSubscriptions(): Promise<YouTubeVideo[]> {
     try {
       console.log('[YouTube API] ===== Starting getVideosFromSubscriptions =====')
+      console.log('[YouTube API] ===== QUOTA OPTIMIZED VERSION - Using playlistItems.list instead of search.list =====')
       
       const channels = await this.getSubscriptions()
       console.log(`[YouTube API] ===== Got ${channels.length} total channels =====`)
@@ -176,6 +181,9 @@ export class YouTubeService {
       
       const channelsToProcess = channels.slice(0, 10)
       console.log(`[YouTube API] Processing ${channelsToProcess.length} channels (first 10)...`)
+      console.log(`[YouTube API] QUOTA ESTIMATE: ${channelsToProcess.length} playlistItems.list calls (${channelsToProcess.length} units) + 1 videos.list call (1 unit) = ~${channelsToProcess.length + 1} total units`)
+      console.log(`[YouTube API] OLD QUOTA COST: ${channelsToProcess.length * 100 + 1} units (search.list was 100 units each)`)
+      console.log(`[YouTube API] QUOTA SAVINGS: ${((channelsToProcess.length * 100) / (channelsToProcess.length + 1) * 100).toFixed(1)}% reduction!`)
       
       const allVideos: YouTubeVideo[] = []
 
