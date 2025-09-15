@@ -94,24 +94,45 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
       
       try {
         const data = JSON.parse(event.data)
+        console.log('[VideoPlayer] YouTube message received:', data)
+        
         if (data.event === 'video-progress') {
+          console.log('[VideoPlayer] Video progress event:', data.info)
           setCurrentTime(data.info.currentTime)
           setDuration(data.info.duration)
         } else if (data.event === 'infoDelivery' && data.info) {
+          console.log('[VideoPlayer] Info delivery event:', data.info)
           // Handle YouTube player state updates
-          if (data.info.currentTime !== undefined) {
+          if (typeof data.info.currentTime === 'number') {
+            console.log('[VideoPlayer] Setting current time:', data.info.currentTime)
             setCurrentTime(data.info.currentTime)
           }
-          if (data.info.duration !== undefined) {
+          if (typeof data.info.duration === 'number') {
+            console.log('[VideoPlayer] Setting duration:', data.info.duration)
             setDuration(data.info.duration)
           }
           if (data.info.playerState !== undefined) {
             // PlayerState: 1=playing, 2=paused, 0=ended
-            setIsPlaying(data.info.playerState === 1)
+            const newIsPlaying = data.info.playerState === 1
+            console.log('[VideoPlayer] Player state change:', data.info.playerState, 'isPlaying:', newIsPlaying)
+            setIsPlaying(newIsPlaying)
+          }
+        } else if (data.event === 'command') {
+          // Handle direct command responses
+          console.log('[VideoPlayer] Command response:', data)
+          if (data.func === 'getDuration' && typeof data.info === 'number') {
+            console.log('[VideoPlayer] Duration response:', data.info)
+            setDuration(data.info)
+          } else if (data.func === 'getCurrentTime' && typeof data.info === 'number') {
+            console.log('[VideoPlayer] Current time response:', data.info)
+            setCurrentTime(data.info)
+          } else if (data.func === 'getPlayerState' && typeof data.info === 'number') {
+            console.log('[VideoPlayer] Player state response:', data.info)
+            setIsPlaying(data.info === 1)
           }
         }
       } catch (error) {
-        // Ignore parsing errors
+        console.log('[VideoPlayer] Error parsing YouTube message:', error)
       }
     }
 
@@ -121,41 +142,79 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
     }
   }, [])
 
+  // Initialize YouTube player and request initial data
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+
+    const onIframeLoad = () => {
+      console.log('[VideoPlayer] Iframe loaded, requesting initial data')
+      
+      // Wait a bit for YouTube player to fully initialize
+      setTimeout(() => {
+        if (iframe.contentWindow) {
+          // Request initial duration
+          iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'getDuration',
+            args: []
+          }), '*')
+          
+          // Request initial current time
+          iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'getCurrentTime', 
+            args: []
+          }), '*')
+
+          // Request player state
+          iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'getPlayerState',
+            args: []
+          }), '*')
+        }
+      }, 1000)
+    }
+
+    iframe.addEventListener('load', onIframeLoad)
+    
+    return () => {
+      iframe.removeEventListener('load', onIframeLoad)
+    }
+  }, [video.id])
+
   // Request periodic time updates from YouTube player
   useEffect(() => {
     const requestTimeUpdate = () => {
       if (iframeRef.current && iframeRef.current.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(
-          JSON.stringify({
-            event: 'command',
-            func: 'getCurrentTime',
-            args: []
-          }),
-          '*'
-        )
-        iframeRef.current.contentWindow.postMessage(
-          JSON.stringify({
+        iframeRef.current.contentWindow.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'getCurrentTime',
+          args: []
+        }), '*')
+        
+        // Also request duration periodically in case it wasn't available initially
+        if (duration === 0) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify({
             event: 'command',
             func: 'getDuration',
             args: []
-          }),
-          '*'
-        )
+          }), '*')
+        }
       }
     }
 
     let interval: NodeJS.Timeout
-    if (isPlaying) {
-      // Request updates every second while playing
-      interval = setInterval(requestTimeUpdate, 1000)
-    }
+    // Request updates every second, regardless of play state to get duration
+    interval = setInterval(requestTimeUpdate, 1000)
 
     return () => {
       if (interval) {
         clearInterval(interval)
       }
     }
-  }, [isPlaying])
+  }, [duration, video.id])
 
   // Load saved video state on component mount (client-side only)
   useEffect(() => {
@@ -348,7 +407,7 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
       <iframe
         ref={iframeRef}
         className="w-full h-full"
-        src={`https://www.youtube.com/embed/${video.id}?enablejsapi=1&controls=0&rel=0&modestbranding=1&autoplay=0&origin=${window.location.origin}`}
+        src={`https://www.youtube.com/embed/${video.id}?enablejsapi=1&controls=0&rel=0&modestbranding=1&autoplay=0&origin=${typeof window !== 'undefined' ? window.location.origin : ''}&playsinline=1&widget_referrer=${typeof window !== 'undefined' ? window.location.origin : ''}`}
         title={video.title}
         frameBorder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
