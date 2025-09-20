@@ -90,37 +90,110 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== 'https://www.youtube.com') return
+      // Accept messages from YouTube domains and subdomains
+      const validOrigins = [
+        'https://www.youtube.com',
+        'https://youtube.com', 
+        'https://www.youtube-nocookie.com',
+        'https://youtube-nocookie.com'
+      ]
+      
+      const isValidOrigin = validOrigins.some(origin => event.origin === origin)
+      if (!isValidOrigin) {
+        console.log('[VideoPlayer] Ignoring message from origin:', event.origin)
+        return
+      }
+      
+      console.log('[VideoPlayer] Raw message received:', event.data, 'from origin:', event.origin)
       
       try {
-        const data = JSON.parse(event.data)
-        console.log('[VideoPlayer] YouTube message received:', data)
+        // Handle both string and object data from YouTube
+        let data = event.data
+        if (typeof data === 'string') {
+          // Skip empty or non-JSON strings
+          if (!data.trim() || (!data.startsWith('{') && !data.startsWith('['))) {
+            console.log('[VideoPlayer] Skipping non-JSON string message:', data)
+            return
+          }
+          data = JSON.parse(data)
+        }
         
-        if (data.event === 'video-progress') {
+        console.log('[VideoPlayer] Parsed YouTube message:', data)
+        
+        // Handle YouTube API ready event
+        if (data.event === 'onReady') {
+          console.log('[VideoPlayer] YouTube player ready!')
+          // Request initial data when player is ready
+          setTimeout(() => {
+            if (iframeRef.current && iframeRef.current.contentWindow) {
+              console.log('[VideoPlayer] Requesting initial data after ready event')
+              // Request duration
+              iframeRef.current.contentWindow.postMessage(JSON.stringify({
+                event: 'command',
+                func: 'getDuration',
+                args: []
+              }), '*')
+              
+              // Request current time
+              iframeRef.current.contentWindow.postMessage(JSON.stringify({
+                event: 'command',
+                func: 'getCurrentTime', 
+                args: []
+              }), '*')
+            }
+          }, 500)
+        }
+        
+        // Handle state change events (more reliable than infoDelivery)
+        else if (data.event === 'onStateChange') {
+          console.log('[VideoPlayer] State change event:', data.info)
+          const newIsPlaying = data.info === 1 // 1 = playing
+          setIsPlaying(newIsPlaying)
+          
+          // Request time update on state change
+          if (iframeRef.current && iframeRef.current.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify({
+              event: 'command',
+              func: 'getCurrentTime',
+              args: []
+            }), '*')
+          }
+        }
+        
+        // Handle video progress updates
+        else if (data.event === 'video-progress') {
           console.log('[VideoPlayer] Video progress event:', data.info)
-          setCurrentTime(data.info.currentTime)
-          setDuration(data.info.duration)
-        } else if (data.event === 'infoDelivery' && data.info) {
+          if (data.info && typeof data.info.currentTime === 'number') {
+            setCurrentTime(data.info.currentTime)
+          }
+          if (data.info && typeof data.info.duration === 'number') {
+            setDuration(data.info.duration)
+          }
+        } 
+        
+        // Handle info delivery events
+        else if (data.event === 'infoDelivery' && data.info) {
           console.log('[VideoPlayer] Info delivery event:', data.info)
-          // Handle YouTube player state updates
+          
           if (typeof data.info.currentTime === 'number') {
-            console.log('[VideoPlayer] Setting current time:', data.info.currentTime)
+            console.log('[VideoPlayer] Setting current time from infoDelivery:', data.info.currentTime)
             setCurrentTime(data.info.currentTime)
           }
           if (typeof data.info.duration === 'number') {
-            console.log('[VideoPlayer] Setting duration:', data.info.duration)
+            console.log('[VideoPlayer] Setting duration from infoDelivery:', data.info.duration)
             setDuration(data.info.duration)
           }
           if (data.info.playerState !== undefined) {
-            // PlayerState: 1=playing, 2=paused, 0=ended
             const newIsPlaying = data.info.playerState === 1
-            console.log('[VideoPlayer] Player state change:', data.info.playerState, 'isPlaying:', newIsPlaying)
+            console.log('[VideoPlayer] Player state change from infoDelivery:', data.info.playerState, 'isPlaying:', newIsPlaying)
             setIsPlaying(newIsPlaying)
           }
-        } else if (data.event === 'command') {
-          // Handle direct command responses
+        } 
+        
+        // Handle direct command responses
+        else if (data.event === 'command') {
           console.log('[VideoPlayer] Command response:', data)
-          if (data.func === 'getDuration' && typeof data.info === 'number') {
+          if (data.func === 'getDuration' && typeof data.info === 'number' && data.info > 0) {
             console.log('[VideoPlayer] Duration response:', data.info)
             setDuration(data.info)
           } else if (data.func === 'getCurrentTime' && typeof data.info === 'number') {
@@ -132,7 +205,7 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
           }
         }
       } catch (error) {
-        console.log('[VideoPlayer] Error parsing YouTube message:', error)
+        console.log('[VideoPlayer] Error parsing YouTube message:', error, 'Raw data:', event.data)
       }
     }
 
@@ -147,40 +220,72 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
     const iframe = iframeRef.current
     if (!iframe) return
 
-    const onIframeLoad = () => {
-      console.log('[VideoPlayer] Iframe loaded, requesting initial data')
-      
-      // Wait a bit for YouTube player to fully initialize
-      setTimeout(() => {
-        if (iframe.contentWindow) {
-          // Request initial duration
-          iframe.contentWindow.postMessage(JSON.stringify({
-            event: 'command',
-            func: 'getDuration',
-            args: []
-          }), '*')
-          
-          // Request initial current time
-          iframe.contentWindow.postMessage(JSON.stringify({
-            event: 'command',
-            func: 'getCurrentTime', 
-            args: []
-          }), '*')
+    let retryCount = 0
+    const maxRetries = 5
+    let retryTimeout: NodeJS.Timeout
 
-          // Request player state
-          iframe.contentWindow.postMessage(JSON.stringify({
-            event: 'command',
-            func: 'getPlayerState',
-            args: []
-          }), '*')
+    const requestInitialData = () => {
+      if (!iframe.contentWindow) {
+        console.log('[VideoPlayer] No contentWindow available, retrying...')
+        if (retryCount < maxRetries) {
+          retryCount++
+          retryTimeout = setTimeout(requestInitialData, 1000)
         }
-      }, 1000)
+        return
+      }
+
+      console.log('[VideoPlayer] Requesting initial data (attempt:', retryCount + 1, ')')
+      
+      // Request duration
+      iframe.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: 'getDuration',
+        args: []
+      }), '*')
+      
+      // Request current time
+      iframe.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: 'getCurrentTime', 
+        args: []
+      }), '*')
+
+      // Request player state
+      iframe.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: 'getPlayerState',
+        args: []
+      }), '*')
+
+      // Enable listening for updates
+      iframe.contentWindow.postMessage(JSON.stringify({
+        event: 'listening',
+        id: video.id
+      }), '*')
+    }
+
+    const onIframeLoad = () => {
+      console.log('[VideoPlayer] Iframe loaded for video:', video.id)
+      
+      // Wait for YouTube player to initialize, then request data
+      setTimeout(() => {
+        requestInitialData()
+      }, 1500) // Increased wait time
     }
 
     iframe.addEventListener('load', onIframeLoad)
     
+    // If iframe is already loaded, trigger the load handler
+    if (iframe.complete) {
+      console.log('[VideoPlayer] Iframe already loaded, triggering load handler')
+      onIframeLoad()
+    }
+    
     return () => {
       iframe.removeEventListener('load', onIframeLoad)
+      if (retryTimeout) {
+        clearTimeout(retryTimeout)
+      }
     }
   }, [video.id])
 
@@ -188,33 +293,45 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
   useEffect(() => {
     const requestTimeUpdate = () => {
       if (iframeRef.current && iframeRef.current.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify({
-          event: 'command',
-          func: 'getCurrentTime',
-          args: []
-        }), '*')
-        
-        // Also request duration periodically in case it wasn't available initially
-        if (duration === 0) {
+        // Only request current time if we're playing or need duration
+        if (isPlaying || duration === 0) {
+          console.log('[VideoPlayer] Requesting time update - playing:', isPlaying, 'duration:', duration)
+          
           iframeRef.current.contentWindow.postMessage(JSON.stringify({
             event: 'command',
-            func: 'getDuration',
+            func: 'getCurrentTime',
             args: []
           }), '*')
+          
+          // Request duration if we don't have it yet
+          if (duration === 0) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify({
+              event: 'command',
+              func: 'getDuration',
+              args: []
+            }), '*')
+          }
         }
+      } else {
+        console.log('[VideoPlayer] Cannot request time update - no iframe or contentWindow')
       }
     }
 
     let interval: NodeJS.Timeout
-    // Request updates every second, regardless of play state to get duration
-    interval = setInterval(requestTimeUpdate, 1000)
+    
+    // Request updates every second when playing, every 5 seconds when paused
+    const updateInterval = isPlaying ? 1000 : 5000
+    interval = setInterval(requestTimeUpdate, updateInterval)
+
+    // Also request immediately
+    requestTimeUpdate()
 
     return () => {
       if (interval) {
         clearInterval(interval)
       }
     }
-  }, [duration, video.id])
+  }, [isPlaying, duration, video.id])
 
   // Load saved video state on component mount (client-side only)
   useEffect(() => {
@@ -407,7 +524,7 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
       <iframe
         ref={iframeRef}
         className="w-full h-full"
-        src={`https://www.youtube.com/embed/${video.id}?enablejsapi=1&controls=0&rel=0&modestbranding=1&autoplay=0&origin=${typeof window !== 'undefined' ? window.location.origin : ''}&playsinline=1&widget_referrer=${typeof window !== 'undefined' ? window.location.origin : ''}`}
+        src={`https://www.youtube.com/embed/${video.id}?enablejsapi=1&controls=0&rel=0&modestbranding=1&autoplay=0&fs=0&iv_load_policy=3&cc_load_policy=0&disablekb=1&playsinline=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
         title={video.title}
         frameBorder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -443,6 +560,10 @@ export default function VideoPlayer({ video, onNext, hasNext }: VideoPlayerProps
               <p className="text-gray-300 text-sm">
                 {video.channelTitle}
               </p>
+              {/* Debug info - remove in production */}
+              <div className="text-xs text-yellow-300 mt-1 opacity-80">
+                Debug: Time {currentTime.toFixed(1)}s / Duration {duration.toFixed(1)}s | Playing: {isPlaying ? 'Yes' : 'No'}
+              </div>
             </div>
             
             <div className="flex items-center gap-3">
